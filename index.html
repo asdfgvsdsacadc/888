@@ -1,0 +1,476 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>圣诞快乐 - 温暖的心意</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;700;900&display=swap');
+        
+        :root {
+            --christmas-red: #C41E3A;
+            --cream-white: #FDF5E6;
+            --gold-accent: #D4AF37;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #0a0a0a;
+            font-family: 'Noto Serif SC', serif;
+            user-select: none;
+            /* 超高清文字渲染优化 */
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+        }
+
+        /* 3D 转换基础 */
+        .preserve-3d { transform-style: preserve-3d; }
+        .backface-hidden { backface-visibility: hidden; }
+
+        /* 模糊背景 */
+        #bg-image {
+            background-image: url('https://images.unsplash.com/photo-1543589077-47d81606c1bf?auto=format&fit=crop&q=80&w=1920');
+            transition: filter 1.5s ease;
+        }
+
+        .stage-fog #bg-image { filter: brightness(0.85) blur(6px); }
+        .stage-envelope #bg-image { filter: brightness(0.6) blur(0px); }
+
+        /* 信封质感 */
+        .glossy::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 50%, rgba(255,255,255,0.05) 100%);
+            pointer-events: none;
+        }
+
+        /* 动画库 */
+        @keyframes pop-up {
+            0% { transform: translate(0, 50px) scale(0); opacity: 0; }
+            100% { transform: translate(var(--tx), var(--ty)) scale(1); opacity: 0.8; }
+        }
+        @keyframes bounce-subtle {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .animate-bounce-subtle { animation: bounce-subtle 4s infinite ease-in-out; }
+
+        /* 状态控制 */
+        .hidden-stage { opacity: 0; pointer-events: none; transform: scale(0.95); transition: all 1s cubic-bezier(0.4, 0, 0.2, 1); }
+        .active-stage { opacity: 1; pointer-events: auto; transform: scale(1); }
+
+        canvas { display: block; }
+        
+        #fog-canvas {
+            cursor: crosshair;
+            touch-action: none;
+        }
+
+        /* 玻璃质感按钮 */
+        .glass-btn {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .glass-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: translateY(-2px);
+        }
+
+        /* 超高清文字：通过精细阴影和字重实现 */
+        #greeting-text {
+            color: #1a1a1a;
+            font-weight: 700;
+            line-height: 1.6;
+            text-shadow: 0 0.5px 1px rgba(0,0,0,0.1);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* 优化信封容器位置：为了平衡，稍微减小 offset 以适配手机屏幕中心 */
+        #envelope-container {
+            transform: translateY(15vh);
+        }
+    </style>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="stage-fog">
+
+    <!-- 背景层 -->
+    <div id="bg-image" class="fixed inset-0 bg-cover bg-center transition-all duration-[2s] ease-out scale-110"></div>
+    <div class="fixed inset-0 bg-gradient-to-t from-black/85 via-black/30 to-black/50 pointer-events-none"></div>
+
+    <!-- 挂件点缀 -->
+    <div class="fixed top-0 left-0 w-full flex justify-between px-6 pointer-events-none z-10">
+        <div class="w-16 h-20 md:w-20 md:h-24 bg-red-900/40 rounded-b-full border-x border-b border-white/10 backdrop-blur-md flex items-end justify-center pb-3 text-2xl shadow-xl">🎄</div>
+        <div class="hidden lg:flex w-24 h-28 bg-white/5 rounded-b-full border-x border-b border-white/10 backdrop-blur-sm items-end justify-center pb-4 text-4xl">🎅</div>
+        <div class="w-16 h-20 md:w-20 md:h-24 bg-red-900/40 rounded-b-full border-x border-b border-white/10 backdrop-blur-md flex items-end justify-center pb-3 text-2xl shadow-xl">✨</div>
+    </div>
+
+    <!-- 雪花粒子 -->
+    <canvas id="snow-canvas" class="fixed inset-0 pointer-events-none z-50"></canvas>
+
+    <!-- 场景一：雾气覆盖层 -->
+    <div id="fog-container" class="fixed inset-0 z-40 transition-all duration-[1500ms]">
+        <canvas id="fog-canvas" class="w-full h-full"></canvas>
+        <div id="fog-hint" class="absolute inset-0 flex items-center justify-center pointer-events-none px-6">
+            <div class="text-white text-center animate-bounce drop-shadow-[0_4px_15px_rgba(0,0,0,0.9)]">
+                <h1 class="text-2xl md:text-4xl font-bold mb-3 tracking-[0.25em]">擦拭玻璃，开启心意</h1>
+                <p class="text-[10px] md:text-xs font-light opacity-60 tracking-[0.4em] uppercase">Wipe the Window to Unfold</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 场景二：3D信封交互层 -->
+    <div id="envelope-stage" class="hidden-stage fixed inset-0 flex flex-col items-center justify-center overflow-visible">
+        
+        <!-- 核心容器定位调整：translateY 确保中心点对齐 -->
+        <div id="envelope-container" class="relative w-full max-w-[480px] flex flex-col items-center justify-center transition-transform duration-1000">
+            
+            <!-- 环境氛围光晕 -->
+            <div id="envelope-glow" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-yellow-400/10 rounded-full blur-[100px] transition-all duration-[2000ms] opacity-20 pointer-events-none"></div>
+
+            <!-- 3D 信封主体 -->
+            <div id="envelope-wrapper" class="relative w-[280px] h-[180px] md:w-[450px] md:h-[300px] cursor-pointer transition-all duration-700 ease-out preserve-3d" style="perspective: 2500px;">
+                
+                <!-- 绽放特效粒子 -->
+                <div id="accents" class="absolute inset-0 pointer-events-none z-30 opacity-0 transition-opacity duration-700">
+                    <div class="absolute" style="--tx: -50px; --ty: -100px; animation: pop-up 2s infinite alternate ease-in-out">❄️</div>
+                    <div class="absolute" style="--tx: 70px; --ty: -150px; animation: pop-up 2.5s infinite alternate ease-in-out">🌿</div>
+                    <div class="absolute" style="--tx: -90px; --ty: -40px; animation: pop-up 1.8s infinite alternate ease-in-out">✨</div>
+                </div>
+
+                <!-- 装饰物 -->
+                <div class="absolute -left-8 -bottom-4 text-3xl md:text-4xl animate-bounce-subtle z-10">🎁</div>
+                <div class="absolute -right-6 -top-8 text-3xl md:text-4xl rotate-12 z-10">🌿</div>
+
+                <!-- 动态阴影 -->
+                <div id="env-shadow" class="absolute -bottom-12 left-1/2 -translate-x-1/2 w-[90%] h-6 bg-black/60 blur-2xl rounded-[100%] transition-all duration-700"></div>
+
+                <div class="relative w-full h-full preserve-3d transition-transform duration-700">
+                    <!-- 1. 信封底座 (Back) -->
+                    <div class="absolute inset-0 glossy rounded-xl shadow-2xl border border-red-900/30 backface-hidden" style="background-color: var(--christmas-red); transform: translateZ(0px);"></div>
+
+                    <!-- 2. 超高清信纸 (Letter) -->
+                    <div id="letter" class="absolute left-3 right-3 h-[90%] bg-[#FCF8F0] rounded-lg shadow-xl transition-all duration-[900ms] ease-[cubic-bezier(0.175,0.885,0.32,1.275)] px-6 md:px-10 py-10 md:py-14 flex flex-col justify-center items-center text-center border border-[#e8dfcf] opacity-0 pointer-events-none backface-hidden" style="transform: translate3d(0, 0, 1px); transform-style: preserve-3d;">
+                        <div class="absolute top-3 left-3 text-red-800/20 text-xl">❄️</div>
+                        <div class="absolute top-3 right-3 text-red-800/20 text-xl">❄️</div>
+                        
+                        <div class="w-full border-b border-red-200/40 pb-4 mb-6">
+                            <span class="text-xl md:text-3xl font-black text-red-800 tracking-tight" style="font-family: 'Ma Shan Zheng', cursive;">Merry Christmas</span>
+                        </div>
+                        
+                        <!-- 超高清文字内容 -->
+                        <p id="greeting-text" class="text-gray-900 leading-relaxed text-sm md:text-xl font-bold tracking-wide px-1"></p>
+                        
+                        <div class="mt-6 text-red-700 font-bold opacity-30 text-[9px] md:text-xs tracking-[0.2em] flex items-center gap-2">
+                            <span class="h-px w-4 md:w-8 bg-red-700/20"></span>
+                            🎄 圣诞平安 🎄
+                            <span class="h-px w-4 md:w-8 bg-red-700/20"></span>
+                        </div>
+                    </div>
+
+                    <!-- 3. 前口袋 -->
+                    <div class="absolute inset-0 pointer-events-none" style="clip-path: polygon(0% 100%, 50% 48%, 100% 100%); background-color: #b01a33; transform: translateZ(5px);"></div>
+                    <div class="absolute inset-0 pointer-events-none" style="clip-path: polygon(0% 0%, 50% 50%, 0% 100%); background-color: #a0182e; transform: translateZ(5px);"></div>
+                    <div class="absolute inset-0 pointer-events-none" style="clip-path: polygon(100% 0%, 50% 50%, 100% 100%); background-color: #a0182e; transform: translateZ(5px);"></div>
+
+                    <!-- 4. 顶盖 (Flap) -->
+                    <div id="env-flap" class="absolute inset-0 origin-top glossy transition-transform duration-[700ms] ease-in-out backface-hidden shadow-lg" style="clip-path: polygon(0% 0%, 100% 0%, 50% 50%); background-color: var(--christmas-red); transform: translateZ(6px) rotateX(0deg);">
+                        <div class="absolute inset-0 bg-black/10 pointer-events-none" style="clip-path: inherit;"></div>
+                    </div>
+
+                    <!-- 火漆印章 (Seal) -->
+                    <div id="env-seal" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-40 transition-all duration-500" style="transform: translate(-50%, -50%) translateZ(7px) scale(1);">
+                        <div class="w-12 h-12 md:w-16 md:h-16 rounded-full bg-yellow-600 shadow-2xl border-2 border-yellow-700/40 flex items-center justify-center">
+                            <span class="text-white text-2xl md:text-3xl drop-shadow-md">✿</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 控制按钮组：调整 margin 和 z-index 确保可见 -->
+            <div id="controls" class="flex flex-col items-center gap-4 mt-16 md:mt-24 opacity-0 pointer-events-none transition-all duration-700 translate-y-8 z-50">
+                <button id="close-btn" class="bg-red-800 hover:bg-red-700 text-white px-10 py-3.5 rounded-full shadow-[0_12px_24px_-5px_rgba(180,30,58,0.4)] border border-white/10 font-black tracking-[0.2em] active:scale-95 transition-all text-xs md:text-sm group uppercase">
+                    <span class="inline-block transition-transform group-hover:-translate-y-0.5">✉ 收好心封 (Collect)</span>
+                </button>
+                <button id="reset-btn" class="glass-btn text-white/70 px-6 py-2 rounded-full text-[9px] tracking-[0.3em] uppercase flex items-center gap-2 font-bold shadow-sm">
+                    <span class="text-base">↺</span> 重置体验
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部版权 -->
+    <div class="fixed bottom-4 left-0 right-0 text-white/15 text-[8px] md:text-[10px] tracking-[0.4em] pointer-events-none font-light italic text-center px-4 z-50 uppercase">
+        Warmth of Christmas · A Secret Shared
+    </div>
+
+    <script>
+        const GREETINGS = [
+            "愿你的圣诞节，像温暖的炉火，闪耀着宁静与喜悦。",
+            "在这银装素裹的日子里，愿所有的美好都如期而至，平安喜乐。",
+            "圣诞的钟声敲响，愿它带给你一整年的幸运与温暖。",
+            "不论距离多远，这份心意始终如一。愿你圣诞快乐，岁岁常欢愉。",
+            "生活虽忙碌，也别忘了在圣诞的午后，给自己留一份恬静的温柔。",
+            "愿所有的祝愿都在这个冬日里开出花来，温暖你的心房。",
+            "灯火阑珊处，愿你总有归处，心有暖阳，圣诞平安。"
+        ];
+
+        // --- 雪花粒子系统 ---
+        const snowCanvas = document.getElementById('snow-canvas');
+        const sctx = snowCanvas.getContext('2d');
+        let particles = [];
+
+        function initSnow() {
+            snowCanvas.width = window.innerWidth;
+            snowCanvas.height = window.innerHeight;
+            particles = [];
+            const count = Math.floor((window.innerWidth * window.innerHeight) / 11000);
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: Math.random() * snowCanvas.width,
+                    y: Math.random() * snowCanvas.height,
+                    radius: Math.random() * 2.5 + 1,
+                    speed: Math.random() * 0.7 + 0.3,
+                    wind: Math.random() * 0.3 - 0.15
+                });
+            }
+        }
+
+        function animateSnow() {
+            sctx.clearRect(0, 0, snowCanvas.width, snowCanvas.height);
+            sctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+            sctx.beginPath();
+            particles.forEach(p => {
+                sctx.moveTo(p.x, p.y);
+                sctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                p.y += p.speed;
+                p.x += p.wind;
+                if (p.y > snowCanvas.height) { p.y = -10; p.x = Math.random() * snowCanvas.width; }
+                if (p.x > snowCanvas.width) p.x = 0;
+                if (p.x < 0) p.x = snowCanvas.width;
+            });
+            sctx.fill();
+            requestAnimationFrame(animateSnow);
+        }
+
+        // --- 雾气玻璃擦拭逻辑 ---
+        const fogCanvas = document.getElementById('fog-canvas');
+        const fctx = fogCanvas.getContext('2d', { willReadFrequently: true });
+        let isDrawing = false;
+        let lastPos = null;
+        let isCleared = false;
+
+        function initFog() {
+            isCleared = false;
+            fogCanvas.width = window.innerWidth;
+            fogCanvas.height = window.innerHeight;
+            fctx.fillStyle = '#d1d5dbde';
+            fctx.fillRect(0, 0, fogCanvas.width, fogCanvas.height);
+            
+            for(let i=0; i<800; i++) {
+                fctx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.12})`;
+                fctx.beginPath();
+                fctx.arc(Math.random() * fogCanvas.width, Math.random() * fogCanvas.height, Math.random() * 80, 0, Math.PI*2);
+                fctx.fill();
+            }
+        }
+
+        function checkFogProgress() {
+            if (isCleared) return;
+            const data = fctx.getImageData(0, 0, fogCanvas.width, fogCanvas.height).data;
+            let transparent = 0;
+            const stride = 60; 
+            for (let i = 3; i < data.length; i += 4 * stride) {
+                if (data[i] < 120) transparent++;
+            }
+            if (transparent / (data.length / (4 * stride)) > 0.65) {
+                isCleared = true;
+                triggerSceneChange();
+            }
+        }
+
+        function triggerSceneChange() {
+            const container = document.getElementById('fog-container');
+            container.style.opacity = '0';
+            container.style.transform = 'scale(1.3) rotate(1deg)';
+            container.style.filter = 'blur(30px)';
+            document.body.classList.remove('stage-fog');
+            document.body.classList.add('stage-envelope');
+            
+            setTimeout(() => {
+                container.style.display = 'none';
+                document.getElementById('envelope-stage').classList.add('active-stage');
+            }, 1000);
+        }
+
+        function handleScratch(e) {
+            if (!isDrawing || isCleared) return;
+            const rect = fogCanvas.getBoundingClientRect();
+            const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+            const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+
+            fctx.globalCompositeOperation = 'destination-out';
+            fctx.lineJoin = 'round';
+            fctx.lineCap = 'round';
+
+            if (lastPos) {
+                fctx.lineWidth = 60 + Math.random() * 20;
+                fctx.beginPath();
+                fctx.moveTo(lastPos.x, lastPos.y);
+                fctx.lineTo(x, y);
+                fctx.stroke();
+                
+                fctx.filter = 'blur(10px)';
+                fctx.stroke();
+                fctx.filter = 'none';
+            }
+            lastPos = { x, y };
+            checkFogProgress();
+        }
+
+        // --- 信封交互 ---
+        let envelopeOpen = false;
+        let animating = false;
+        let currentGreetIdx = 0;
+
+        const envelopeWrapper = document.getElementById('envelope-wrapper');
+        const flap = document.getElementById('env-flap');
+        const letter = document.getElementById('letter');
+        const seal = document.getElementById('env-seal');
+        const controls = document.getElementById('controls');
+        const closeBtn = document.getElementById('close-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const greetText = document.getElementById('greeting-text');
+        const accents = document.getElementById('accents');
+        const glow = document.getElementById('envelope-glow');
+        const envShadow = document.getElementById('env-shadow');
+
+        envelopeWrapper.onclick = () => {
+            if (animating || envelopeOpen) return;
+            animating = true;
+            envelopeOpen = true;
+
+            greetText.innerText = GREETINGS[currentGreetIdx];
+            currentGreetIdx = (currentGreetIdx + 1) % GREETINGS.length;
+
+            envelopeWrapper.style.transform = 'scale(1.02) translateY(-10px)';
+            glow.style.transform = 'translate(-50%, -50%) scale(1.3)';
+            glow.style.opacity = '0.4';
+            envShadow.style.transform = 'translateX(-50%) scale(1.1)';
+            envShadow.style.opacity = '0.3';
+
+            seal.style.transform = 'translate(-50%, -50%) translateZ(7px) scale(0)';
+            seal.style.opacity = '0';
+
+            setTimeout(() => {
+                flap.style.transform = 'translateZ(6px) rotateX(180deg)';
+                setTimeout(() => {
+                    letter.style.opacity = '1';
+                    letter.style.transform = 'translate3d(0, -65%, 1px)';
+                    letter.style.pointerEvents = 'auto';
+                    accents.classList.remove('opacity-0');
+                    setTimeout(() => {
+                        controls.classList.remove('pointer-events-none', 'opacity-0');
+                        controls.style.opacity = '1';
+                        controls.style.transform = 'translateY(0)';
+                        animating = false;
+                    }, 500);
+                }, 400);
+            }, 300);
+        };
+
+        const performClose = (callback) => {
+            if (animating) return;
+            animating = true;
+
+            controls.style.opacity = '0';
+            controls.style.transform = 'translateY(20px)';
+            controls.classList.add('pointer-events-none');
+            
+            letter.style.transform = 'translate3d(0, 0, 1px)';
+            letter.style.opacity = '0';
+            letter.style.pointerEvents = 'none';
+            accents.classList.add('opacity-0');
+
+            setTimeout(() => {
+                flap.style.transform = 'translateZ(6px) rotateX(0deg)';
+                setTimeout(() => {
+                    seal.style.transform = 'translate(-50%, -50%) translateZ(7px) scale(1)';
+                    seal.style.opacity = '1';
+                    envelopeWrapper.style.transform = 'scale(1) translateY(0)';
+                    glow.style.transform = 'translate(-50%, -50%) scale(1)';
+                    glow.style.opacity = '0.2';
+                    envShadow.style.transform = 'translateX(-50%) scale(1)';
+                    envShadow.style.opacity = '1';
+                    
+                    envelopeOpen = false;
+                    animating = false;
+                    if(callback && typeof callback === 'function') callback();
+                }, 600);
+            }, 700);
+        };
+
+        closeBtn.onclick = (e) => {
+            e.stopPropagation();
+            performClose();
+        };
+
+        resetBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (animating) return;
+            
+            const resetStage = () => {
+                const stage = document.getElementById('envelope-stage');
+                const container = document.getElementById('fog-container');
+                stage.classList.remove('active-stage');
+                setTimeout(() => {
+                    document.body.classList.remove('stage-envelope');
+                    document.body.classList.add('stage-fog');
+                    container.style.display = 'block';
+                    container.style.opacity = '1';
+                    container.style.transform = 'scale(1)';
+                    container.style.filter = 'none';
+                    initFog();
+                }, 1000);
+            };
+
+            if (envelopeOpen) {
+                performClose(resetStage);
+            } else {
+                resetStage();
+            }
+        };
+
+        window.onload = () => {
+            initSnow();
+            animateSnow();
+            initFog();
+        };
+
+        window.onresize = () => {
+            initSnow();
+            initFog();
+        };
+
+        fogCanvas.onmousedown = (e) => { isDrawing = true; lastPos = null; handleScratch(e); };
+        fogCanvas.ontouchstart = (e) => { isDrawing = true; lastPos = null; handleScratch(e); };
+        window.onmouseup = () => { isDrawing = false; lastPos = null; };
+        window.ontouchend = () => { isDrawing = false; lastPos = null; };
+        fogCanvas.onmousemove = handleScratch;
+        fogCanvas.ontouchmove = handleScratch;
+
+    </script>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>
